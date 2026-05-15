@@ -1,5 +1,5 @@
 
-const ENV = false
+const ENV = true
 
 function getServerUrl(){
     if(ENV){
