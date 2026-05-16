@@ -569,10 +569,10 @@
                 // alerta
                 const alerta = document.getElementById("alerta");
 
-                if (data.potencia > 1500) {
+                if (data.potencia > 4000) {
                     alerta.className = "alert alert-danger text-center";
                     alerta.innerText = "⚠️ Consumo crítico";
-                } else if (data.potencia > 800) {
+                } else if (data.potencia > 2000) {
                     alerta.className = "alert alert-warning text-center";
                     alerta.innerText = "⚡ Consumo moderado";
                 } else {
