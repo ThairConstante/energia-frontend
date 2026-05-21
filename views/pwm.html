@@ -1,0 +1,740 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IoT Admin — PWM Ventilador</title>
+  <link rel="stylesheet" href="../css/shared.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    /* ── PWM Hero Card ─────────────────────── */
+    .pwm-hero {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      margin-bottom: 24px;
+    }
+
+    /* Fan visual card */
+    .fan-visual-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-xl);
+      padding: 36px 28px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 24px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .fan-visual-card::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(circle at 50% 40%, rgba(0,255,148,0.05) 0%, transparent 65%);
+      pointer-events: none;
+      transition: opacity 0.6s ease;
+    }
+
+    .fan-visual-card.speed-off::before   { background: radial-gradient(circle at 50% 40%, rgba(61,89,120,0.05) 0%, transparent 65%); }
+    .fan-visual-card.speed-slow::before  { background: radial-gradient(circle at 50% 40%, rgba(0,217,255,0.06) 0%, transparent 65%); }
+    .fan-visual-card.speed-medium::before{ background: radial-gradient(circle at 50% 40%, rgba(255,184,0,0.06) 0%, transparent 65%); }
+    .fan-visual-card.speed-fast::before  { background: radial-gradient(circle at 50% 40%, rgba(255,61,113,0.07) 0%, transparent 65%); }
+
+    /* SVG Fan blade spinner */
+    .fan-svg-wrap {
+      position: relative;
+      width: 180px;
+      height: 180px;
+    }
+
+    .fan-ring {
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      border: 2px solid var(--border);
+      transition: border-color 0.5s ease;
+    }
+
+    .fan-ring-glow {
+      position: absolute;
+      inset: -6px;
+      border-radius: 50%;
+      opacity: 0;
+      transition: opacity 0.5s ease;
+    }
+
+    .speed-slow   .fan-ring-glow { box-shadow: 0 0 30px rgba(0,217,255,0.3);  opacity: 1; }
+    .speed-medium .fan-ring-glow { box-shadow: 0 0 40px rgba(255,184,0,0.35); opacity: 1; }
+    .speed-fast   .fan-ring-glow { box-shadow: 0 0 50px rgba(255,61,113,0.4); opacity: 1; }
+
+    .fan-blades {
+      width: 100%;
+      height: 100%;
+      animation: none;
+    }
+
+    /* Speed classes control animation duration */
+    .speed-slow   .fan-blades { animation: fanRotate 2.5s linear infinite; }
+    .speed-medium .fan-blades { animation: fanRotate 1.0s linear infinite; }
+    .speed-fast   .fan-blades { animation: fanRotate 0.35s linear infinite; }
+    .speed-off    .fan-blades { animation: none; }
+
+    @keyframes fanRotate { to { transform: rotate(360deg); } }
+
+    /* Speed label */
+    .speed-label {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      padding: 6px 20px;
+      border-radius: 99px;
+      transition: all 0.4s ease;
+    }
+
+    .speed-off    .speed-label { background: var(--bg-card2);  color: var(--text-muted); border: 1px solid var(--border); }
+    .speed-slow   .speed-label { background: var(--cyan-dim);  color: var(--cyan);       border: 1px solid rgba(0,217,255,0.3); }
+    .speed-medium .speed-label { background: var(--amber-dim); color: var(--amber);      border: 1px solid rgba(255,184,0,0.3); }
+    .speed-fast   .speed-label { background: var(--red-dim);   color: var(--red);        border: 1px solid rgba(255,61,113,0.3); }
+
+    /* PWM % big number */
+    .pwm-big {
+      font-family: var(--font-mono);
+      font-size: 52px;
+      font-weight: 700;
+      line-height: 1;
+      transition: color 0.4s ease;
+    }
+    .speed-off    .pwm-big { color: var(--text-muted); }
+    .speed-slow   .pwm-big { color: var(--cyan); }
+    .speed-medium .pwm-big { color: var(--amber); }
+    .speed-fast   .pwm-big { color: var(--red); }
+
+    .pwm-unit {
+      font-family: var(--font-mono);
+      font-size: 18px;
+      color: var(--text-muted);
+    }
+
+    /* ── Info panel ───────────────────────── */
+    .info-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .info-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 20px 22px;
+    }
+
+    /* Temperature meter */
+    .temp-meter-label {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      margin-bottom: 10px;
+    }
+
+    .temp-meter-value {
+      font-family: var(--font-mono);
+      font-size: 36px;
+      font-weight: 700;
+      color: var(--red);
+      line-height: 1;
+      margin-bottom: 12px;
+    }
+
+    .temp-track {
+      position: relative;
+      height: 10px;
+      background: var(--bg-card2);
+      border-radius: 99px;
+      overflow: visible;
+      margin-bottom: 6px;
+    }
+
+    .temp-fill {
+      height: 100%;
+      border-radius: 99px;
+      transition: width 0.8s cubic-bezier(0.4,0,0.2,1), background 0.5s ease;
+      position: relative;
+    }
+
+    .temp-fill::after {
+      content: '';
+      position: absolute;
+      right: -1px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: inherit;
+      box-shadow: 0 0 10px currentColor;
+    }
+
+    .temp-zones {
+      display: flex;
+      justify-content: space-between;
+      font-family: var(--font-mono);
+      font-size: 9px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    /* Zone markers */
+    .zone-markers {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+
+    .zone-mark {
+      position: absolute;
+      top: -5px;
+      width: 1px;
+      height: 20px;
+      background: var(--border);
+    }
+
+    /* RPM gauge */
+    .rpm-row {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .rpm-val {
+      font-family: var(--font-mono);
+      font-size: 32px;
+      font-weight: 700;
+      transition: color 0.4s ease;
+      min-width: 100px;
+    }
+
+    .rpm-info { flex: 1; }
+    .rpm-label {
+      font-size: 11px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+
+    .rpm-bar-track {
+      height: 6px;
+      background: var(--bg-card2);
+      border-radius: 99px;
+      overflow: hidden;
+    }
+
+    .rpm-bar-fill {
+      height: 100%;
+      border-radius: 99px;
+      transition: width 0.8s cubic-bezier(0.4,0,0.2,1), background 0.5s ease;
+    }
+
+    /* Stages table */
+    .stages-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      margin-bottom: 24px;
+    }
+
+    .stages-header {
+      padding: 16px 22px;
+      border-bottom: 1px solid var(--border);
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-primary);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .stages-header i { color: var(--cyan); }
+
+    .stages-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+    }
+
+    .stage-item {
+      padding: 20px 22px;
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      position: relative;
+      overflow: hidden;
+      transition: var(--transition);
+    }
+
+    .stage-item:last-child { border-right: none; }
+
+    .stage-item.active-stage::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      opacity: 0.05;
+    }
+
+    .stage-item.stage-off.active-stage::before   { background: var(--text-muted); }
+    .stage-item.stage-slow.active-stage::before  { background: var(--cyan); }
+    .stage-item.stage-medium.active-stage::before{ background: var(--amber); }
+    .stage-item.stage-fast.active-stage::before  { background: var(--red); }
+
+    .stage-item.active-stage { border-bottom: 2px solid; }
+    .stage-item.stage-off.active-stage    { border-bottom-color: var(--text-muted); }
+    .stage-item.stage-slow.active-stage   { border-bottom-color: var(--cyan); }
+    .stage-item.stage-medium.active-stage { border-bottom-color: var(--amber); }
+    .stage-item.stage-fast.active-stage   { border-bottom-color: var(--red); }
+
+    .stage-range {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .stage-off    .stage-range { color: var(--text-muted); }
+    .stage-slow   .stage-range { color: var(--cyan); }
+    .stage-medium .stage-range { color: var(--amber); }
+    .stage-fast   .stage-range { color: var(--red); }
+
+    .stage-name {
+      font-size: 12px;
+      color: var(--text-secondary);
+      font-weight: 600;
+    }
+
+    .stage-pwm {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    /* Chart */
+    .chart-wrap-tall { height: 240px; position: relative; }
+
+    /* Sidebar overlay */
+    .sidebar-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.6);
+      z-index: 999;
+    }
+    .sidebar-overlay.show { display: block; }
+
+    @media (max-width: 900px) {
+      .pwm-hero      { grid-template-columns: 1fr; }
+      .stages-grid   { grid-template-columns: 1fr; }
+      .stage-item    { border-right: none; border-bottom: 1px solid var(--border); }
+    }
+  </style>
+</head>
+<body>
+<div class="sidebar-overlay" id="sidebar-overlay"></div>
+
+<div class="app-shell">
+  <!-- ── SIDEBAR ──────────────────────── -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-icon"><i class="fas fa-microchip"></i></div>
+      <div class="brand-text">
+        <span class="brand-name">IoT Admin</span>
+        <span class="brand-sub">Sist de Monitoreo</span>
+      </div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-section-label">Principal</div>
+      <a href="index.html" class="nav-item"><i class="fas fa-gauge-high"></i> Dashboard</a>
+      <div class="nav-section-label">Monitoreo</div>
+      <a href="energia.html"     class="nav-item"><i class="fas fa-bolt"></i> Energía</a>
+      <a href="temperatura.html" class="nav-item"><i class="fas fa-thermometer-half"></i> Temperatura</a>
+      <a href="pwm.html"         class="nav-item active"><i class="fas fa-fan"></i> PWM Ventilador</a>
+      <div class="nav-section-label">Sistema</div>
+      <a href="#" class="nav-item"><i class="fas fa-sliders"></i> Configuración</a>
+      <a href="#" class="nav-item"><i class="fas fa-bell"></i> Alertas</a>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="api-status"><span class="status-dot"></span> API Conectada — Demo</div>
+    </div>
+  </aside>
+
+  <!-- ── MAIN CONTENT ─────────────────── -->
+  <div class="main-content">
+    <nav class="top-navbar">
+      <div class="navbar-left">
+        <button class="hamburger" id="hamburger"><i class="fas fa-bars"></i></button>
+        <div>
+          <div class="page-title">PWM — Control de Ventilador</div>
+          <div class="page-breadcrumb">/ sistema / pwm / ventilador</div>
+        </div>
+      </div>
+      <div class="navbar-right">
+        <div class="live-indicator"><div class="live-dot"></div>EN VIVO</div>
+        <div class="datetime-block">
+          <div class="datetime-time" id="clock-time">--:--:--</div>
+          <div class="datetime-date" id="clock-date">—</div>
+        </div>
+        <button class="refresh-btn" id="refresh-btn">
+          <i class="fas fa-rotate-right"></i> Actualizar
+        </button>
+      </div>
+    </nav>
+
+    <div class="page-body">
+
+      <!-- STAGES REFERENCE -->
+      <div class="section-header mb-18">
+        <div class="section-title">Lógica PWM por Temperatura</div>
+        <div class="live-indicator"><div class="live-dot"></div>AUTO-REFRESH 10s</div>
+      </div>
+
+      <div class="stages-card mb-18">
+        <div class="stages-header">
+          <i class="fas fa-sliders"></i> Etapas de Control
+        </div>
+        <div class="stages-grid">
+          <div class="stage-item stage-off" id="stage-off">
+            <div class="stage-range">T &lt; 20°C</div>
+            <div class="stage-name">Apagado</div>
+            <div class="stage-pwm">PWM: 0% &nbsp;·&nbsp; 0 RPM</div>
+          </div>
+          <div class="stage-item stage-slow" id="stage-slow">
+            <div class="stage-range">20°C – 30°C</div>
+            <div class="stage-name">Velocidad Baja</div>
+            <div class="stage-pwm">PWM: 30–60% &nbsp;·&nbsp; 400–900 RPM</div>
+          </div>
+          <div class="stage-item stage-fast" id="stage-fast">
+            <div class="stage-range">T &gt; 30°C</div>
+            <div class="stage-name">Velocidad Alta</div>
+            <div class="stage-pwm">PWM: 60–100% &nbsp;·&nbsp; 900–1500 RPM</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- HERO -->
+      <div class="pwm-hero">
+
+        <!-- Fan animation -->
+        <div class="fan-visual-card speed-off" id="fan-card">
+          <div class="fan-svg-wrap">
+            <div class="fan-ring-glow"></div>
+            <div class="fan-ring"></div>
+            <svg class="fan-blades" viewBox="0 0 180 180" xmlns="http://www.w3.org/2000/svg">
+              <g transform="translate(90,90)">
+                <!-- 4 blades -->
+                <g id="blade-group">
+                  <ellipse cx="0" cy="-38" rx="22" ry="38" fill="currentColor" opacity="0.85" rx="22"/>
+                  <ellipse cx="38" cy="0"  rx="38" ry="22" fill="currentColor" opacity="0.65" transform="rotate(90)"/>
+                  <ellipse cx="0"  cy="38" rx="22" ry="38" fill="currentColor" opacity="0.85" transform="rotate(180)"/>
+                  <ellipse cx="-38" cy="0" rx="38" ry="22" fill="currentColor" opacity="0.65" transform="rotate(270)"/>
+                </g>
+                <!-- Center hub -->
+                <circle r="14" fill="var(--bg-card)" stroke="currentColor" stroke-width="2"/>
+                <circle r="5"  fill="currentColor"/>
+              </g>
+            </svg>
+          </div>
+
+          <div>
+            <span class="pwm-big" id="pwm-value">0</span>
+            <span class="pwm-unit">%</span>
+          </div>
+
+          <div class="speed-label" id="speed-label">APAGADO</div>
+        </div>
+
+        <!-- Info panel -->
+        <div class="info-panel">
+
+          <!-- Temperature meter -->
+          <div class="info-card">
+            <div class="temp-meter-label">Temperatura Actual</div>
+            <div class="temp-meter-value"><span id="temp-now">—</span>°C</div>
+            <div class="temp-track">
+              <div class="zone-markers">
+                <!-- 20°C mark = 40% of 50°C scale -->
+                <div class="zone-mark" style="left:40%"></div>
+                <!-- 30°C mark = 60% -->
+                <div class="zone-mark" style="left:60%"></div>
+              </div>
+              <div class="temp-fill" id="temp-fill" style="width:0%"></div>
+            </div>
+            <div class="temp-zones">
+              <span>0°C</span>
+              <span style="color:var(--cyan)">20°C</span>
+              <span style="color:var(--amber)">30°C</span>
+              <span style="color:var(--red)">50°C</span>
+            </div>
+          </div>
+
+          <!-- RPM -->
+          <div class="info-card">
+            <div class="rpm-label">Velocidad del Ventilador</div>
+            <div class="rpm-row">
+              <div class="rpm-val" id="rpm-val" style="color:var(--text-muted)">0</div>
+              <div class="rpm-info">
+                <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;font-family:var(--font-mono)">RPM estimadas</div>
+                <div class="rpm-bar-track">
+                  <div class="rpm-bar-fill" id="rpm-bar" style="width:0%;background:var(--text-muted)"></div>
+                </div>
+                <div style="display:flex;justify-content:space-between;font-family:var(--font-mono);font-size:9px;color:var(--text-muted);margin-top:4px">
+                  <span>0</span><span>750</span><span>1500 RPM</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Duty cycle breakdown -->
+          <div class="info-card">
+            <div class="temp-meter-label">Duty Cycle PWM</div>
+            <div class="temp-track" style="height:12px">
+              <div class="temp-fill" id="duty-fill" style="width:0%"></div>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-family:var(--font-mono);font-size:9px;color:var(--text-muted);margin-top:6px">
+              <span>0%</span><span>25%</span><span>50%</span><span>75%</span><span>100%</span>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- HISTORY CHART -->
+      <div class="section-header mt-6">
+        <div class="section-title">Historial — Temperatura vs PWM</div>
+        <div class="chart-badge">TIEMPO REAL</div>
+      </div>
+
+      <div class="chart-card mt-12">
+        <div class="chart-header">
+          <div class="chart-title">
+            <i class="fas fa-chart-line"></i> Temperatura °C &amp; Duty Cycle %
+          </div>
+          <div style="display:flex;gap:16px;font-family:var(--font-mono);font-size:11px">
+            <span style="color:var(--red)">── Temperatura</span>
+            <span style="color:var(--cyan)">── PWM %</span>
+          </div>
+        </div>
+        <div class="chart-wrap-tall">
+          <canvas id="chart-pwm"></canvas>
+        </div>
+      </div>
+
+    </div><!-- /page-body -->
+  </div>
+</div>
+
+<script src="../js/shared.js"></script>
+<script>
+Chart.defaults.color = '#3d5978';
+
+// ── PWM Logic ─────────────────────────────
+// Ranges: < 20 = off, 20-30 = slow (30-60%), > 30 = fast (60-100%)
+const PWM_RANGES = [
+  { maxTemp: 20, speed: 'off',  label: 'APAGADO',        pwmMin: 0,  pwmMax: 0,   rpmMin: 0,   rpmMax: 0    },
+  { maxTemp: 30, speed: 'slow', label: 'VELOCIDAD BAJA',  pwmMin: 30, pwmMax: 60,  rpmMin: 400, rpmMax: 900  },
+  { maxTemp: Infinity, speed: 'fast', label: 'VELOCIDAD ALTA', pwmMin: 60, pwmMax: 100, rpmMin: 900, rpmMax: 1500 },
+];
+
+function calcPWM(temp) {
+  if (temp < 20) {
+    return { speed: 'off', pwm: 0, rpm: 0, label: 'APAGADO' };
+  } else if (temp < 30) {
+    // Linear interpolation 20→30°C maps to 30→60% PWM
+    const t   = (temp - 20) / 10;          // 0..1
+    const pwm = Math.round(30 + t * 30);   // 30..60
+    const rpm = Math.round(400 + t * 500); // 400..900
+    return { speed: 'slow', pwm, rpm, label: 'VELOCIDAD BAJA' };
+  } else {
+    // Linear interpolation 30→50°C maps to 60→100% PWM
+    const t   = Math.min((temp - 30) / 20, 1); // 0..1 capped
+    const pwm = Math.round(60 + t * 40);        // 60..100
+    const rpm = Math.round(900 + t * 600);      // 900..1500
+    return { speed: 'fast', pwm, rpm, label: 'VELOCIDAD ALTA' };
+  }
+}
+
+// ── Chart setup ───────────────────────────
+let chartPwm;
+
+function initChart() {
+  const ctx = document.getElementById('chart-pwm').getContext('2d');
+  chartPwm = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: [],
+      datasets: [
+        {
+          label: 'Temperatura °C',
+          data: [],
+          borderColor: CHART_COLORS.red,
+          backgroundColor: 'rgba(255,61,113,0.07)',
+          borderWidth: 2,
+          tension: 0.4,
+          fill: true,
+          pointRadius: 3,
+          pointBackgroundColor: CHART_COLORS.red,
+          yAxisID: 'yTemp',
+        },
+        {
+          label: 'PWM %',
+          data: [],
+          borderColor: CHART_COLORS.cyan,
+          backgroundColor: 'rgba(0,217,255,0.07)',
+          borderWidth: 2,
+          tension: 0.4,
+          fill: true,
+          pointRadius: 3,
+          pointBackgroundColor: CHART_COLORS.cyan,
+          yAxisID: 'yPwm',
+        },
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#0d1f3c',
+          borderColor: 'rgba(0,217,255,0.2)',
+          borderWidth: 1,
+          titleColor: '#7a9cc0',
+          padding: 10,
+          cornerRadius: 8,
+        }
+      },
+      scales: {
+        x: {
+          grid: { color: 'rgba(0,217,255,0.04)' },
+          ticks: { color: '#3d5978', font: { family: "'Space Mono'", size: 10 }, maxTicksLimit: 8, maxRotation: 0 }
+        },
+        yTemp: {
+          position: 'left',
+          grid: { color: 'rgba(0,217,255,0.06)' },
+          ticks: { color: CHART_COLORS.red, font: { family: "'Space Mono'", size: 10 }, callback: v => v + '°C' },
+          border: { display: false },
+        },
+        yPwm: {
+          position: 'right',
+          min: 0, max: 100,
+          grid: { drawOnChartArea: false },
+          ticks: { color: CHART_COLORS.cyan, font: { family: "'Space Mono'", size: 10 }, callback: v => v + '%' },
+          border: { display: false },
+        }
+      },
+      animation: { duration: 400 },
+    }
+  });
+}
+
+function pushToChartPwm(label, temp, pwm) {
+  const MAX = 30;
+  chartPwm.data.labels.push(label);
+  chartPwm.data.datasets[0].data.push(temp);
+  chartPwm.data.datasets[1].data.push(pwm);
+  if (chartPwm.data.labels.length > MAX) {
+    chartPwm.data.labels.shift();
+    chartPwm.data.datasets[0].data.shift();
+    chartPwm.data.datasets[1].data.shift();
+  }
+  chartPwm.update('none');
+}
+
+// ── UI Update ─────────────────────────────
+let currentPwm = 0;
+
+function updateUI(temp, result) {
+  const { speed, pwm, rpm, label } = result;
+
+  // Fan card class
+  const fanCard = document.getElementById('fan-card');
+  fanCard.className = `fan-visual-card speed-${speed}`;
+
+  // Fan blade color
+  const blades = fanCard.querySelector('.fan-blades');
+  const colors = { off: 'var(--text-muted)', slow: 'var(--cyan)', medium: 'var(--amber)', fast: 'var(--red)' };
+  blades.style.color = colors[speed] || 'var(--text-muted)';
+
+  // PWM counter animate
+  animateCounter(document.getElementById('pwm-value'), pwm, 0, 500);
+  document.getElementById('speed-label').textContent = label;
+
+  // Temperature
+  document.getElementById('temp-now').textContent = temp.toFixed(1);
+  const tempPct = Math.min(100, (temp / 50) * 100);
+  const tempFill = document.getElementById('temp-fill');
+  tempFill.style.width = tempPct + '%';
+  // Color by zone
+  if (temp < 20)      tempFill.style.background = 'var(--text-muted)';
+  else if (temp < 30) tempFill.style.background = 'linear-gradient(90deg, var(--cyan), var(--amber))';
+  else                tempFill.style.background = 'linear-gradient(90deg, var(--amber), var(--red))';
+
+  // RPM
+  const rpmEl  = document.getElementById('rpm-val');
+  const rpmBar = document.getElementById('rpm-bar');
+  animateCounter(rpmEl, rpm, 0, 500);
+  const rpmPct = Math.min(100, (rpm / 1500) * 100);
+  rpmBar.style.width      = rpmPct + '%';
+  rpmBar.style.background = colors[speed];
+  rpmEl.style.color       = colors[speed];
+
+  // Duty cycle bar
+  const dutyFill = document.getElementById('duty-fill');
+  dutyFill.style.width      = pwm + '%';
+  dutyFill.style.background = colors[speed];
+
+  // Stage highlight
+  document.querySelectorAll('.stage-item').forEach(el => el.classList.remove('active-stage'));
+  const stageMap = { off: 'stage-off', slow: 'stage-slow', fast: 'stage-fast' };
+  const activeId = stageMap[speed];
+  if (activeId) document.getElementById(activeId)?.classList.add('active-stage');
+
+  currentPwm = pwm;
+}
+
+// ── Fetch & Refresh ───────────────────────
+async function fetchAll() {
+  const data = await getTemperatura();
+  const temp = data.temperatura;
+  const result = calcPWM(temp);
+
+  updateUI(temp, result);
+
+  const lbl = new Date().toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  pushToChartPwm(lbl, temp, result.pwm);
+}
+
+// ── Init ──────────────────────────────────
+document.addEventListener('DOMContentLoaded', async () => {
+  initChart();
+  await fetchAll();
+  initRefreshBtn(fetchAll);
+  setInterval(fetchAll, REFRESH_INTERVAL);
+
+  const overlay   = document.getElementById('sidebar-overlay');
+  const hamburger = document.getElementById('hamburger');
+  const sidebar   = document.getElementById('sidebar');
+  hamburger.addEventListener('click', () => { sidebar.classList.toggle('open'); overlay.classList.toggle('show'); });
+  overlay.addEventListener('click',   () => { sidebar.classList.remove('open'); overlay.classList.remove('show'); });
+});
+</script>
+</body>
+</html>
