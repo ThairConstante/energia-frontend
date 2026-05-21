@@ -3,7 +3,7 @@
    ========================================== */
 
 // ── Config ────────────────────────────────
-const API_BASE = 'https://energia-backend-1tk8.onrender.co'; // Tu API FastAPI local
+const API_BASE = 'https://energia-backend-1tk8.onrender.com'; // Tu API FastAPI local
 const REFRESH_INTERVAL = 10000; // 10 seconds
 
 // ── Mock Data Generator ───────────────────
