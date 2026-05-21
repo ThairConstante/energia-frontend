@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IoT Admin — Temperatura</title>
+  <link rel="stylesheet" href="../css/shared.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <style>
+    /* Gauge visual */
+    .gauge-cards {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+      margin-bottom: 18px;
+    }
+
+    .gauge-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-xl);
+      padding: 24px;
+      display: flex;
+      align-items: center;
+      gap: 22px;
+      position: relative;
+      overflow: hidden;
+      transition: var(--transition);
+    }
+    .gauge-card:hover { border-color: var(--border-hover); }
+
+    .gauge-card::before {
+      content: '';
+      position: absolute;
+      bottom: -30px; right: -30px;
+      width: 140px; height: 140px;
+      border-radius: 50%;
+      opacity: 0.04;
+    }
+    .gauge-card.red-card::before   { background: var(--red); }
+    .gauge-card.cyan-card::before  { background: var(--cyan); }
+
+    .gauge-card.red-card  { border-top: 2px solid var(--red); }
+    .gauge-card.cyan-card { border-top: 2px solid var(--cyan); }
+
+    .gauge-big-val {
+      font-family: var(--font-mono);
+      font-size: 42px;
+      font-weight: 700;
+      line-height: 1;
+    }
+    .gauge-card.red-card  .gauge-big-val { color: var(--red); }
+    .gauge-card.cyan-card .gauge-big-val { color: var(--cyan); }
+
+    .gauge-info .gauge-label {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+    }
+    .gauge-info .gauge-unit {
+      font-family: var(--font-mono);
+      font-size: 16px;
+      color: var(--text-secondary);
+    }
+    .gauge-info .gauge-desc {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 6px;
+    }
+
+    /* Thermometer icon */
+    .gauge-icon-wrap {
+      width: 64px; height: 64px;
+      border-radius: var(--radius-lg);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 28px;
+      flex-shrink: 0;
+    }
+    .gauge-card.red-card  .gauge-icon-wrap { background: var(--red-dim);  color: var(--red);  }
+    .gauge-card.cyan-card .gauge-icon-wrap { background: var(--cyan-dim); color: var(--cyan); }
+
+    /* Device status big cards */
+    .device-big-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+      margin-bottom: 24px;
+    }
+
+    .device-big-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-xl);
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      transition: var(--transition);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .device-big-card::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      transition: var(--transition);
+    }
+
+    .device-big-card.dev-on { border-color: rgba(0,255,148,0.3); }
+    .device-big-card.dev-on::before { background: radial-gradient(circle at 50% 50%, rgba(0,255,148,0.06) 0%, transparent 70%); opacity: 1; }
+
+    .device-big-card.dev-off::before { opacity: 0; }
+
+    .dev-icon-big {
+      width: 72px; height: 72px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 30px;
+      transition: var(--transition);
+    }
+
+    .device-big-card.dev-on  .dev-icon-big { background: var(--green-dim); color: var(--green); box-shadow: 0 0 30px rgba(0,255,148,0.2); }
+    .device-big-card.dev-off .dev-icon-big { background: var(--bg-card2);  color: var(--text-muted); }
+
+    .dev-name-big {
+      font-family: var(--font-display);
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .dev-state-big {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      padding: 5px 16px;
+      border-radius: 99px;
+    }
+    .device-big-card.dev-on  .dev-state-big { background: var(--green-dim); color: var(--green); border: 1px solid rgba(0,255,148,0.25); }
+    .device-big-card.dev-off .dev-state-big { background: var(--bg-card2);  color: var(--text-muted); border: 1px solid var(--border); }
+
+    /* Charts */
+    .charts-duo { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 24px; }
+    .chart-wrap { height: 220px; position: relative; }
+
+    /* Sidebar overlay */
+    .sidebar-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.6);
+      z-index: 999;
+    }
+    .sidebar-overlay.show { display: block; }
+
+    /* Comfort level indicator */
+    .comfort-bar-wrap {
+      margin-top: 8px;
+      background: var(--bg-card2);
+      border-radius: 99px;
+      height: 5px;
+      overflow: hidden;
+    }
+    .comfort-bar {
+      height: 100%;
+      border-radius: 99px;
+      background: linear-gradient(90deg, var(--cyan), var(--green));
+      transition: width 0.6s cubic-bezier(0.4,0,0.2,1);
+    }
+
+    @media (max-width: 900px) {
+      .gauge-cards       { grid-template-columns: 1fr; }
+      .device-big-grid   { grid-template-columns: 1fr; }
+      .charts-duo        { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+<div class="sidebar-overlay" id="sidebar-overlay"></div>
+
+<div class="app-shell">
+  <!-- ── SIDEBAR ──────────────────────── -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-icon"><i class="fas fa-microchip"></i></div>
+      <div class="brand-text">
+        <span class="brand-name">IoT Admin</span>
+        <span class="brand-sub">Sist de Monitoreo</span>
+      </div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-section-label">Principal</div>
+      <a href="index.html" class="nav-item"><i class="fas fa-gauge-high"></i> Dashboard</a>
+      <div class="nav-section-label">Monitoreo</div>
+      <a href="energia.html" class="nav-item"><i class="fas fa-bolt"></i> Energía</a>
+      <a href="temperatura.html" class="nav-item active"><i class="fas fa-thermometer-half"></i> Temperatura</a>
+      <a href="pwm.html"         class="nav-item">
+        <i class="fas fa-fan"></i> PWM Ventilador
+      </a>
+      <div class="nav-section-label">Sistema</div>
+      <a href="#" class="nav-item"><i class="fas fa-sliders"></i> Configuración</a>
+      <a href="#" class="nav-item"><i class="fas fa-bell"></i> Alertas</a>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="api-status"><span class="status-dot"></span> API Conectada — Demo</div>
+    </div>
+  </aside>
+
+  <!-- ── MAIN CONTENT ─────────────────── -->
+  <div class="main-content">
+    <nav class="top-navbar">
+      <div class="navbar-left">
+        <button class="hamburger" id="hamburger"><i class="fas fa-bars"></i></button>
+        <div>
+          <div class="page-title">Módulo de Temperatura</div>
+          <div class="page-breadcrumb">/ sistema / monitoreo / temperatura</div>
+        </div>
+      </div>
+      <div class="navbar-right">
+        <div class="live-indicator"><div class="live-dot"></div>EN VIVO</div>
+        <div class="datetime-block">
+          <div class="datetime-time" id="clock-time">--:--:--</div>
+          <div class="datetime-date" id="clock-date">—</div>
+        </div>
+        <button class="refresh-btn" id="refresh-btn">
+          <i class="fas fa-rotate-right"></i> Actualizar
+        </button>
+      </div>
+    </nav>
+
+    <div class="page-body">
+
+      <!-- GAUGE CARDS -->
+      <div class="section-header">
+        <div class="section-title">Lecturas Ambientales</div>
+        <div class="live-indicator"><div class="live-dot"></div>AUTO-REFRESH 10s</div>
+      </div>
+
+      <div class="gauge-cards">
+        <div class="gauge-card red-card">
+          <div class="gauge-icon-wrap"><i class="fas fa-temperature-high"></i></div>
+          <div class="gauge-info">
+            <div class="gauge-label">Temperatura</div>
+            <div>
+              <span class="gauge-big-val" id="val-temp">—</span>
+              <span class="gauge-unit">°C</span>
+            </div>
+            <div class="gauge-desc">Sensor DHT22 — Interior</div>
+            <div class="comfort-bar-wrap mt-6">
+              <div class="comfort-bar" id="temp-bar" style="width:0%"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="gauge-card cyan-card">
+          <div class="gauge-icon-wrap"><i class="fas fa-droplet"></i></div>
+          <div class="gauge-info">
+            <div class="gauge-label">Humedad Relativa</div>
+            <div>
+              <span class="gauge-big-val" id="val-humedad">—</span>
+              <span class="gauge-unit">%</span>
+            </div>
+            <div class="gauge-desc">Humedad relativa del aire</div>
+            <div class="comfort-bar-wrap mt-6">
+              <div class="comfort-bar" id="humedad-bar" style="width:0%;background:linear-gradient(90deg,var(--cyan),var(--purple))"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- DEVICE STATUS -->
+      <div class="section-header mt-12">
+        <div class="section-title">Estado de Dispositivos</div>
+      </div>
+
+      <div class="device-big-grid">
+        <div class="device-big-card dev-off" id="card-ventilador">
+          <div class="dev-icon-big"><i class="fas fa-fan" id="fan-icon"></i></div>
+          <div class="dev-name-big">Ventilador</div>
+          <div class="dev-state-big" id="st-ventilador">---</div>
+          <div style="font-size:11px;color:var(--text-muted);font-family:var(--font-mono)">Control Automático de Temperatura</div>
+        </div>
+
+        <div class="device-big-card dev-off" id="card-bombillo">
+          <div class="dev-icon-big"><i class="fas fa-lightbulb"></i></div>
+          <div class="dev-name-big">Bombillo</div>
+          <div class="dev-state-big" id="st-bombillo">---</div>
+          <div style="font-size:11px;color:var(--text-muted);font-family:var(--font-mono)">Iluminación Principal</div>
+        </div>
+      </div>
+
+      <!-- HISTORICAL TABLE -->
+      <div class="data-table-wrap mb-18">
+        <div class="data-table-header">
+          <div class="data-table-title"><i class="fas fa-table"></i> Historial de Temperatura</div>
+          <div class="table-actions">
+            <button class="btn btn-green" onclick="exportTableToCSV('temp-table','temperatura_datos.csv')">
+              <i class="fas fa-file-csv"></i> Exportar CSV
+            </button>
+          </div>
+        </div>
+        <div class="table-responsive">
+          <table class="data-table" id="temp-table">
+            <thead>
+              <tr>
+                <th>Fecha / Hora</th>
+                <th>Temperatura (°C)</th>
+                <th>Humedad (%)</th>
+              </tr>
+            </thead>
+            <tbody id="temp-tbody">
+              <tr>
+                <td colspan="5" style="text-align:center;padding:30px;color:var(--text-muted)">
+                  <i class="fas fa-spinner fa-spin"></i> Cargando datos…
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- CHARTS -->
+      <div class="section-header mt-24">
+        <div class="section-title">Gráficas en Tiempo Real</div>
+        <div class="chart-badge">CHART.JS</div>
+      </div>
+
+      <div class="charts-duo">
+        <div class="chart-card">
+          <div class="chart-header">
+            <div class="chart-title"><i class="fas fa-temperature-high"></i> Temperatura</div>
+            <div class="chart-badge" style="color:var(--red)">°C</div>
+          </div>
+          <div class="chart-wrap"><canvas id="chart-temp"></canvas></div>
+        </div>
+
+        <div class="chart-card">
+          <div class="chart-header">
+            <div class="chart-title"><i class="fas fa-droplet"></i> Humedad Relativa</div>
+            <div class="chart-badge" style="color:var(--cyan)">%</div>
+          </div>
+          <div class="chart-wrap"><canvas id="chart-humedad"></canvas></div>
+        </div>
+      </div>
+
+    </div><!-- /page-body -->
+  </div>
+</div>
+
+<script src="../js/shared.js"></script>
+<script>
+Chart.defaults.color = '#3d5978';
+
+let chartTemp, chartHumedad;
+let fanSpinning = false;
+
+function initCharts() {
+  chartTemp    = new Chart(document.getElementById('chart-temp').getContext('2d'),    makeChartConfig('Temperatura °C', CHART_COLORS.red,  20));
+  chartHumedad = new Chart(document.getElementById('chart-humedad').getContext('2d'), makeChartConfig('Humedad %',      CHART_COLORS.cyan, 20));
+}
+
+function updateDeviceBig(id, state) {
+  const card  = document.getElementById(`card-${id}`);
+  const label = document.getElementById(`st-${id}`);
+  if (!card || !label) return;
+  label.textContent = state;
+  card.className = `device-big-card ${state === 'ON' ? 'dev-on' : 'dev-off'}`;
+
+  // Fan spin animation
+  if (id === 'ventilador') {
+    const icon = document.getElementById('fan-icon');
+    if (icon) {
+      if (state === 'ON') {
+        icon.style.animation = 'fanSpin 1.2s linear infinite';
+      } else {
+        icon.style.animation = 'none';
+      }
+    }
+  }
+}
+
+function renderTable(rows) {
+  const tbody = document.getElementById('temp-tbody');
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:30px;color:var(--text-muted)">Sin datos</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = rows.map(r => `
+    <tr>
+      <td>${r.fecha}</td>
+      <td class="mono" style="color:var(--red)">${r.temperatura}</td>
+      <td class="mono" style="color:var(--cyan)">${r.humedad}</td>
+    </tr>
+  `).join('');
+}
+
+
+
+// Check comfort level and fire alert if out of range
+let alertShown = false;
+function checkComfort(temp, humedad) {
+  if ((temp > 32 || humedad > 80) && !alertShown) {
+    alertShown = true;
+    Swal.fire({
+      toast: true,
+      position: 'top-end',
+      icon: 'warning',
+      title: `⚠️ Alerta: T=${temp}°C / H=${humedad}%`,
+      text: 'Valores fuera del rango de confort.',
+      showConfirmButton: false,
+      timer: 4000,
+      background: '#0d1f3c',
+      color: '#ffb800',
+    });
+    setTimeout(() => { alertShown = false; }, 30000);
+  }
+}
+
+async function fetchAll() {
+  const [temperatura, dispositivos] = await Promise.all([
+    getTemperatura(), getDispositivos()
+  ]);
+
+  // Values
+  animateCounter(document.getElementById('val-temp'),    temperatura.temperatura, 1);
+  animateCounter(document.getElementById('val-humedad'), temperatura.humedad, 1);
+
+  // Progress bars
+  document.getElementById('temp-bar').style.width    = `${Math.min(100, (temperatura.temperatura / 45) * 100)}%`;
+  document.getElementById('humedad-bar').style.width = `${Math.min(100, temperatura.humedad)}%`;
+
+  // Devices
+  updateDeviceBig('ventilador', dispositivos.ventilador);
+  updateDeviceBig('bombillo',   dispositivos.bombillo);
+
+  // Charts
+  const lbl = new Date().toLocaleTimeString('es-CO', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+  pushToChart(chartTemp,    lbl, temperatura.temperatura);
+  pushToChart(chartHumedad, lbl, temperatura.humedad);
+
+  // Table — API real o mock fallback
+  const rows = await getTemperaturaHistory();
+  renderTable(rows);
+
+  // Comfort check
+  checkComfort(temperatura.temperatura, temperatura.humedad);
+}
+
+// Fan spin keyframe
+const style = document.createElement('style');
+style.textContent = `@keyframes fanSpin { to { transform: rotate(360deg); } }`;
+document.head.appendChild(style);
+
+document.addEventListener('DOMContentLoaded', async () => {
+  initCharts();
+  await fetchAll();
+  initRefreshBtn(fetchAll);
+  setInterval(fetchAll, REFRESH_INTERVAL);
+
+  const overlay = document.getElementById('sidebar-overlay');
+  const hamburger = document.getElementById('hamburger');
+  const sidebar = document.getElementById('sidebar');
+  hamburger.addEventListener('click', () => { sidebar.classList.toggle('open'); overlay.classList.toggle('show'); });
+  overlay.addEventListener('click', () => { sidebar.classList.remove('open'); overlay.classList.remove('show'); });
+});
+</script>
+</body>
+</html>

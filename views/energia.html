@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IoT Admin — Energía</title>
+  <link rel="stylesheet" href="../css/shared.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <style>
+    .charts-quad {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+      margin-top: 24px;
+    }
+    .chart-wrap { height: 200px; position: relative; }
+
+    .table-number { font-family: var(--font-mono); color: var(--text-primary); }
+
+    .voltaje-val  { color: var(--cyan); }
+    .corriente-val{ color: var(--green); }
+    .potencia-val { color: var(--amber); }
+    .energia-val  { color: var(--purple); }
+
+    /* Shimmer skeleton row */
+    .table-skeleton td > div {
+      height: 14px;
+      border-radius: 4px;
+    }
+
+    .sidebar-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.6);
+      z-index: 999;
+    }
+    .sidebar-overlay.show { display: block; }
+
+    @media (max-width: 900px) {
+      .charts-quad { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+<div class="sidebar-overlay" id="sidebar-overlay"></div>
+
+<div class="app-shell">
+  <!-- ── SIDEBAR ──────────────────────── -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-icon"><i class="fas fa-microchip"></i></div>
+      <div class="brand-text">
+        <span class="brand-name">IoT Admin</span>
+        <span class="brand-sub">Sist de Monitoreo</span>
+      </div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-section-label">Principal</div>
+      <a href="index.html" class="nav-item"><i class="fas fa-gauge-high"></i> Dashboard</a>
+      <div class="nav-section-label">Monitoreo</div>
+      <a href="energia.html" class="nav-item active"><i class="fas fa-bolt"></i> Energía</a>
+      <a href="temperatura.html" class="nav-item"><i class="fas fa-thermometer-half"></i> Temperatura</a>
+      <a href="pwm.html"         class="nav-item">
+        <i class="fas fa-fan"></i> PWM Ventilador
+      </a>
+      <div class="nav-section-label">Sistema</div>
+      <a href="#" class="nav-item"><i class="fas fa-sliders"></i> Configuración</a>
+      <a href="#" class="nav-item"><i class="fas fa-bell"></i> Alertas</a>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="api-status"><span class="status-dot"></span> API Conectada — Demo</div>
+    </div>
+  </aside>
+
+  <!-- ── MAIN CONTENT ─────────────────── -->
+  <div class="main-content">
+    <nav class="top-navbar">
+      <div class="navbar-left">
+        <button class="hamburger" id="hamburger"><i class="fas fa-bars"></i></button>
+        <div>
+          <div class="page-title">Módulo de Energía</div>
+          <div class="page-breadcrumb">/ sistema / monitoreo / energia</div>
+        </div>
+      </div>
+      <div class="navbar-right">
+        <div class="live-indicator"><div class="live-dot"></div>EN VIVO</div>
+        <div class="datetime-block">
+          <div class="datetime-time" id="clock-time">--:--:--</div>
+          <div class="datetime-date" id="clock-date">—</div>
+        </div>
+        <button class="refresh-btn" id="refresh-btn">
+          <i class="fas fa-rotate-right"></i> Actualizar
+        </button>
+      </div>
+    </nav>
+
+    <div class="page-body">
+
+      <!-- TOP COUNTERS -->
+      <div class="section-header">
+        <div class="section-title">Lecturas Actuales</div>
+        <div class="live-indicator"><div class="live-dot"></div>AUTO-REFRESH 10s</div>
+      </div>
+
+      <div class="stats-grid stats-grid-4 mb-18">
+        <div class="stat-card cyan">
+          <div class="stat-header">
+            <div class="stat-label">Voltaje</div>
+            <div class="stat-icon"><i class="fas fa-plug-circle-bolt"></i></div>
+          </div>
+          <div><span class="stat-value" id="val-voltaje">—</span><span class="stat-unit">V</span></div>
+          <div class="stat-sub">Tensión AC de línea</div>
+        </div>
+        <div class="stat-card green">
+          <div class="stat-header">
+            <div class="stat-label">Corriente</div>
+            <div class="stat-icon"><i class="fas fa-wave-square"></i></div>
+          </div>
+          <div><span class="stat-value" id="val-corriente">—</span><span class="stat-unit">A</span></div>
+          <div class="stat-sub">Corriente instantánea</div>
+        </div>
+        <div class="stat-card amber">
+          <div class="stat-header">
+            <div class="stat-label">Potencia</div>
+            <div class="stat-icon"><i class="fas fa-fire-flame-curved"></i></div>
+          </div>
+          <div><span class="stat-value" id="val-potencia">—</span><span class="stat-unit">W</span></div>
+          <div class="stat-sub">Potencia activa</div>
+        </div>
+        <div class="stat-card purple">
+          <div class="stat-header">
+            <div class="stat-label">Energía</div>
+            <div class="stat-icon"><i class="fas fa-battery-three-quarters"></i></div>
+          </div>
+          <div><span class="stat-value" id="val-energia">—</span><span class="stat-unit">kWh</span></div>
+          <div class="stat-sub">Consumo acumulado</div>
+        </div>
+      </div>
+
+      <!-- FILTERS -->
+      <div class="chart-card mb-18">
+        <div class="chart-header">
+          <div class="chart-title"><i class="fas fa-filter"></i> Filtros</div>
+          <div class="table-actions">
+            <button class="btn btn-green" onclick="exportTableToCSV('energia-table','energia_datos.csv')">
+              <i class="fas fa-file-csv"></i> Exportar CSV
+            </button>
+          </div>
+        </div>
+        <div class="filters-bar">
+          <div>
+            <label class="form-label">Desde</label><br>
+            <input type="date" class="form-control" id="filter-from">
+          </div>
+          <div>
+            <label class="form-label">Hasta</label><br>
+            <input type="date" class="form-control" id="filter-to">
+          </div>
+          <div>
+            <label class="form-label">Métrica</label><br>
+            <select class="form-control" id="filter-metric">
+              <option value="all">Todas</option>
+              <option value="voltaje">Voltaje</option>
+              <option value="corriente">Corriente</option>
+              <option value="potencia">Potencia</option>
+              <option value="energia">Energía</option>
+            </select>
+          </div>
+          <div style="align-self:flex-end">
+            <button class="btn btn-cyan" onclick="applyFilters()"><i class="fas fa-magnifying-glass"></i> Aplicar</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- HISTORICAL TABLE -->
+      <div class="data-table-wrap mb-18">
+        <div class="data-table-header">
+          <div class="data-table-title"><i class="fas fa-table"></i> Historial de Lecturas</div>
+          <span style="font-family:var(--font-mono);font-size:11px;color:var(--text-muted)" id="row-count">— registros</span>
+        </div>
+        <div class="table-responsive">
+          <table class="data-table" id="energia-table">
+            <thead>
+              <tr>
+                <th>Fecha / Hora</th>
+                <th>Voltaje (V)</th>
+                <th>Corriente (A)</th>
+                <th>Potencia (W)</th>
+                <th>Energía (kWh)</th>
+              </tr>
+            </thead>
+            <tbody id="energia-tbody">
+              <tr>
+                <td colspan="5" style="text-align:center;padding:30px;color:var(--text-muted)">
+                  <i class="fas fa-spinner fa-spin"></i> Cargando datos…
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- CHARTS 2x2 -->
+      <div class="section-header mt-24">
+        <div class="section-title">Gráficas en Tiempo Real</div>
+        <div class="chart-badge">CHART.JS</div>
+      </div>
+
+      <div class="charts-quad">
+        <div class="chart-card">
+          <div class="chart-header">
+            <div class="chart-title"><i class="fas fa-plug-circle-bolt"></i> Voltaje</div>
+            <div class="chart-badge" style="color:var(--cyan)">V</div>
+          </div>
+          <div class="chart-wrap"><canvas id="chart-voltaje"></canvas></div>
+        </div>
+
+        <div class="chart-card">
+          <div class="chart-header">
+            <div class="chart-title"><i class="fas fa-wave-square"></i> Corriente</div>
+            <div class="chart-badge" style="color:var(--green)">A</div>
+          </div>
+          <div class="chart-wrap"><canvas id="chart-corriente"></canvas></div>
+        </div>
+
+        <div class="chart-card">
+          <div class="chart-header">
+            <div class="chart-title"><i class="fas fa-fire-flame-curved"></i> Potencia</div>
+            <div class="chart-badge" style="color:var(--amber)">W</div>
+          </div>
+          <div class="chart-wrap"><canvas id="chart-potencia"></canvas></div>
+        </div>
+
+        <div class="chart-card">
+          <div class="chart-header">
+            <div class="chart-title"><i class="fas fa-battery-three-quarters"></i> Energía</div>
+            <div class="chart-badge" style="color:var(--purple)">kWh</div>
+          </div>
+          <div class="chart-wrap"><canvas id="chart-energia"></canvas></div>
+        </div>
+      </div>
+
+    </div><!-- /page-body -->
+  </div>
+</div>
+
+<script src="../js/shared.js"></script>
+<script>
+Chart.defaults.color = '#3d5978';
+
+let charts = {};
+let allRows = [];
+
+function initCharts() {
+  charts.voltaje   = new Chart(document.getElementById('chart-voltaje').getContext('2d'),   makeChartConfig('Voltaje V',    CHART_COLORS.cyan,   20));
+  charts.corriente = new Chart(document.getElementById('chart-corriente').getContext('2d'), makeChartConfig('Corriente A',  CHART_COLORS.green,  20));
+  charts.potencia  = new Chart(document.getElementById('chart-potencia').getContext('2d'),  makeChartConfig('Potencia W',   CHART_COLORS.amber,  20));
+  charts.energia   = new Chart(document.getElementById('chart-energia').getContext('2d'),   makeChartConfig('Energía kWh',  CHART_COLORS.purple, 20));
+}
+
+function renderTable(rows) {
+  const tbody = document.getElementById('energia-tbody');
+  document.getElementById('row-count').textContent = `${rows.length} registros`;
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:30px;color:var(--text-muted)">Sin datos para el filtro seleccionado</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = rows.map(r => `
+    <tr>
+      <td>${r.fecha}</td>
+      <td class="table-number voltaje-val">${r.voltaje}</td>
+      <td class="table-number corriente-val">${r.corriente}</td>
+      <td class="table-number potencia-val">${r.potencia}</td>
+      <td class="table-number energia-val">${r.energia}</td>
+    </tr>
+  `).join('');
+}
+
+function applyFilters() {
+  const metric = document.getElementById('filter-metric').value;
+  Swal.fire({
+    toast: true,
+    position: 'bottom-end',
+    icon: 'success',
+    title: `Filtro aplicado: ${metric === 'all' ? 'Todas las métricas' : metric}`,
+    showConfirmButton: false,
+    timer: 2000,
+    background: '#0d1f3c',
+    color: '#e8f4ff',
+  });
+  renderTable(allRows);
+}
+
+
+async function fetchAll() {
+  const energia = await getEnergia();
+  animateCounter(document.getElementById('val-voltaje'),   energia.voltaje,   2);
+  animateCounter(document.getElementById('val-corriente'), energia.corriente, 3);
+  animateCounter(document.getElementById('val-potencia'),  energia.potencia,  2);
+  animateCounter(document.getElementById('val-energia'),   energia.energia,   4);
+
+  const lbl = new Date().toLocaleTimeString('es-CO', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+  pushToChart(charts.voltaje,   lbl, energia.voltaje);
+  pushToChart(charts.corriente, lbl, energia.corriente);
+  pushToChart(charts.potencia,  lbl, energia.potencia);
+  pushToChart(charts.energia,   lbl, energia.energia);
+
+  // Build historical rows — API real o mock fallback
+  allRows = await getEnergiaHistory();
+  renderTable(allRows);
+}
+
+// Set default date range
+function setDefaultDates() {
+  const today = new Date();
+  const from  = new Date(today); from.setDate(from.getDate() - 7);
+  document.getElementById('filter-from').value = from.toISOString().split('T')[0];
+  document.getElementById('filter-to').value   = today.toISOString().split('T')[0];
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
+  setDefaultDates();
+  initCharts();
+  await fetchAll();
+  initRefreshBtn(fetchAll);
+  setInterval(fetchAll, REFRESH_INTERVAL);
+
+  // Sidebar overlay
+  const overlay = document.getElementById('sidebar-overlay');
+  const hamburger = document.getElementById('hamburger');
+  const sidebar = document.getElementById('sidebar');
+  hamburger.addEventListener('click', () => { sidebar.classList.toggle('open'); overlay.classList.toggle('show'); });
+  overlay.addEventListener('click', () => { sidebar.classList.remove('open'); overlay.classList.remove('show'); });
+});
+</script>
+</body>
+</html>
