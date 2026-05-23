@@ -104,9 +104,7 @@ async function getEnergiaHistory() {
   const data = await fetchData('/energia/list');
   if (Array.isArray(data) && data.length > 0) {
     return data.map(r => ({
-      fecha: r.fecha && r.hora
-      ? `${r.fecha} ${r.hora}`
-      : '—',
+      fecha:       r.fecha ? new Date(r.fecha).toLocaleString('es-CO') : '—',
       voltaje:   parseFloat(r.voltaje).toFixed(2),
       corriente: parseFloat(r.corriente).toFixed(3),
       potencia:  parseFloat(r.potencia).toFixed(2),
